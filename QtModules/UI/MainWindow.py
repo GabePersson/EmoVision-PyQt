@@ -9,10 +9,11 @@ from QtModules.Thread.GenerateImageThread import GenerateImageThread
 from QtModules.Thread.CameraThread import CameraThread
 from QtModules.UI.DrawingScene import DrawingScene
 from QtModules.Thread.VoiceThread import VoiceThread
+from QtModules.Thread.DepthCameraThread import DepthCameraThread
 from QtModules.Thread.BigModelThreadManager import BigModelThreadManager
 
-SERVER_IP = 'http://47.106.252.40:8001'
-
+#TODO:将此处改为本地API
+SERVER_IP = 'http://<IP_ADDRESS:PORT>'
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
@@ -95,6 +96,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # 清理数据
         self.clearData()
 
+        # 深度相机
+        self.depth_camera_thread = DepthCameraThread()
+
     def confirmAction(self, title="确认操作", text="你确定要执行该操作吗"):
         reply = QMessageBox.question(
             self,
@@ -149,6 +153,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.btn_genImg.setEnabled(True)
         self.btn_saveRefImg.setEnabled(True)
         if qimage.isNull():
+            # TODO:因为额度问题，因此此处采用之前生成的图片
             with open("Srcs/sample_generation.jpg", 'rb') as f:
                 data = f.read()
             qimage.loadFromData(data)
@@ -191,7 +196,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def open_website(self):
         # 设置要打开的URL
-        url = QUrl("https://www.baidu.com")
+        url = QUrl("http://sugar.bce.baidu.com/group/first/preview/dashboard/d_1013e-ipngz4p-kwjx63?hideReturnButton=1&__scp__=scp_1013e-6f3hfbrw-k4z7rg")
         # 在默认浏览器中打开链接
         QDesktopServices.openUrl(url)
 
@@ -211,16 +216,30 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.close()
 
     def start_camera(self):
-        self.camera_thread.start()
+        if self.depth_camera_thread.checkCamera():
+            self.depth_camera_thread.start()
+        else:
+            print("无深度相机，不进行深度相机分析")
+            self.camera_thread.start()
+
 
     def stop_camera(self):
-        self.camera_thread.stop()
-        self.camera_thread.wait()  # 等待线程结束
+        if self.depth_camera_thread.isRunning():
+            self.depth_camera_thread.stop()
+            self.depth_camera_thread.wait()
+        elif self.camera_thread.isRunning():
+            self.camera_thread.stop()
+            self.camera_thread.wait()
+
 
     def runBigModel(self):
         # 运行大模型的例子，传入图片和文本数据
         if self.camera_thread.isRunning():
             img = self.camera_thread.img
+            if not img.isNull():
+                self.BigModelThreadManager.runFace(img)
+        elif self.depth_camera_thread.isRunning():
+            img = self.depth_camera_thread.img
             if not img.isNull():
                 self.BigModelThreadManager.runFace(img)
         # 将场景渲染到一个QImage中
